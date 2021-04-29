@@ -1,0 +1,8 @@
+name "demulator"
+description "\"A gameboy color emulator. Sorta. It's meant to just run gbkiss games.\""
+authors "Isaac"
+copyright "Copyright © 2021, Isaac"
+license "proprietary"
+dependency "bindbc-sdl" version="~>0.1.0"
+versions "BindSDL_Static"
+sourceFiles "sdl2.lib" "sdl2_image.lib"

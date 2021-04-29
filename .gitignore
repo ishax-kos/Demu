@@ -1,0 +1,15 @@
+.dub
+docs.json
+__dummy.html
+docs/
+/demulator
+demulator.so
+demulator.dylib
+demulator.dll
+demulator.a
+demulator.lib
+demulator-test-*
+*.exe
+*.o
+*.obj
+*.lst
