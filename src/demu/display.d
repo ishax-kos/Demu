@@ -1,4 +1,4 @@
-module display;
+module demu.display;
 import std.stdio;
 import bindbc.sdl;
 import bindbc.sdl.image;
