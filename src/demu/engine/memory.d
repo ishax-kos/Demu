@@ -71,27 +71,20 @@ struct GameBoyCPUState {
 
     private void flagRW(string f)(bool val) {
         static ubyte mask = mixin(q{FBit.}~f);
-        flags = (~mask & flags) | (mask*val);
+        flags = ((255 ^ mask) & flags) | (mask * val);
     }
 
-    private void setFlags(ubyte values, ubyte flagMask) {
-        flags = (~flagMask & flags) | (flagMask&values);
+    void setFlags(ubyte values, ubyte flagMask) {
+        ubyte flips = (255 ^ flagMask) & values;
+        ubyte noSet = (255 ^ flagMask) & flags;
+        ubyte set = (flagMask & values);
+        flags = flips ^ noSet | set;
     }
     
     private void flagFlip(string f)(bool val) {
         static ubyte mask = mixin(q{FBit.}~f);
         return mask ^ flags;
     }
-
-    // void fSet(string f)() {
-    //     static ubyte mask = mixin(q{FBit.}~f);
-    //     flags |= mask;
-    // }
-
-    // void fOff(string f)() {
-    //     static ubyte mask = mixin(q{FBit.}~f);
-    //     flags &= ~mask;
-    // }
 }
 
 
@@ -107,7 +100,7 @@ struct GameBoyMemoryState {
     auto hram  = new BankSet!0x7F();
     ubyte ieReg;
 
-    ubyte read(ushort address) {
+    ubyte* read(ushort address) {
         if (address < 0x4000) {
             return cart.read(address);
         }
@@ -179,7 +172,9 @@ struct GameBoyMemoryState {
     //         }".format(offset, source));
     //     }
     // }
-    void write(ushort address, ubyte val) {
+    
+    
+    private void write(ushort address, ubyte val) {
         if (address < 0x4000) {
             cart.write(address, val);
             return;
