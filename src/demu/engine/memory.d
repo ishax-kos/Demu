@@ -13,78 +13,81 @@ enum FBit
 }
 
 
-// union Arguments {
-//     void[2] raw;
-//     ubyte[2] u8;
-//     byte[2] s8;
-//     ushort u16;
-//     this(void[2] rawBytes) {
-//         raw = rawBytes;
-//     }
-// }
+enum Flag {
+    Z,
+    N,
+    H,
+    Cy,
+    NZ = 0b0100,
+    NC = 0b0111, 
+}
+
+enum Reg8 {
+    A,F,
+    B,C,
+    D,E,
+    H,L,
+}
+
+enum Reg16 {
+    AF,
+    BC,
+    DE,
+    HL,
+}
 
 
 align(1)
 struct GameBoyCPUState {
-    union { 
-        struct {
-            ubyte rA;
-            ubyte flags;
-            ubyte rB;
-            ubyte rC;
-            ubyte rD;
-            ubyte rE;
-            ubyte rH;
-            ubyte rL;
-            ubyte rS;
-            ubyte rP;
-        }
-        struct {
-            ushort rAF;
-            ushort rBC;
-            ushort rDE;
-            ushort rHL;
-            ushort rSP;
-        }
+    union {
+        Data1[8] reg8;
+        // struct {
+        //     ubyte rA;
+        //     ubyte rF;
+        //     ubyte rB;
+        //     ubyte rC;
+        //     ubyte rD;
+        //     ubyte rE;
+        //     ubyte rH;
+        //     ubyte rL;
+        // }
+        Data2[4] reg16;
+        // struct {
+        //     ushort rAF;
+        //     ushort rBC;
+        //     ushort rDE;
+        //     ushort rHL;
+        // }
     }
     ushort programCounter;
-    alias stackPointer = rSP;
+    ushort stackPointer;
+
+    private bool[4] flag;
 
 
-
-    // import std.format: format;
-    // static import std.bitmanip: bitfields;
-    
-    void fZ(bool val) {flagRW!"Z"(val);}
-    void fN(bool val) {flagRW!"N"(val);}
-    void fH(bool val) {flagRW!"H"(val);}
-    void fC(bool val) {flagRW!"C"(val);}
-    bool fZ() {return flagRW!"Z"();}
-    bool fN() {return flagRW!"N"();}
-    bool fH() {return flagRW!"H"();}
-    bool fC() {return flagRW!"C"();}
-    
-    private bool flagRW(string f)() {
-        static ubyte mask = mixin(q{FBit.}~f);
-        return (mask & flags) == mask;
-    }
-
-    private void flagRW(string f)(bool val) {
-        static ubyte mask = mixin(q{FBit.}~f);
-        flags = ((255 ^ mask) & flags) | (mask * val);
-    }
-
-    void setFlags(ubyte values, ubyte flagMask) {
-        ubyte flips = (255 ^ flagMask) & values;
-        ubyte noSet = (255 ^ flagMask) & flags;
-        ubyte set = (flagMask & values);
-        flags = flips ^ noSet | set;
+    bool readFlag(Flag f) {
+        return flag[f&3] ^ cast(bool) (f>>2);
     }
     
-    private void flagFlip(string f)(bool val) {
-        static ubyte mask = mixin(q{FBit.}~f);
-        return mask ^ flags;
+
+    void writeFlag(Flag f, bool val) {
+        flag[f&3] = val;
+        reg8[1].u8 = flag[0]<<7 | flag[1]<<6 | flag[2]<<5 | flag[3]<<4;
     }
+
+    void Cy(bool val) {writeFlag(Flag.Cy, val);}
+    bool Cy() {return readFlag(Flag.Cy);}
+
+
+    // bool readRegister8(Reg8 reg) {
+    //     return reg8[reg];
+    // }
+
+
+    // bool writeRegister(Flag flag) {
+    //     return 0;
+    // }
+
 }
 
 
@@ -100,7 +103,7 @@ struct GameBoyMemoryState {
     auto hram  = new BankSet!0x7F();
     ubyte ieReg;
 
-    ubyte* read(ushort address) {
+    ubyte read(ushort address) {
         if (address < 0x4000) {
             return cart.read(address);
         }

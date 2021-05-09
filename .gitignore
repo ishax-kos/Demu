@@ -13,3 +13,5 @@ demulator-test-*
 *.o
 *.obj
 *.lst
+test.d
+.gitignore
