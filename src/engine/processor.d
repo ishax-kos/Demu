@@ -1,7 +1,10 @@
-module demu.engine.cpu;
+module engine.processor;
 
-import demu.data;
-import demu.engine.memory;
+import data;
+import process;
+import engine.memory;
+import std.stdio;
+
 
 // @disable const;
 
@@ -15,19 +18,29 @@ alias u8 = ubyte;
 // }
 
 @nogc:
-class CPU {
+class CPU : Update {
     GameBoyCPUState state = GameBoyCPUState();
     GameBoyMemoryState ram = GameBoyMemoryState();
     // alias memWrite() = ram.write();
     // alias memRead() = ram.read();
     ubyte currentOpcode;
+    bool useAltTime = 0;
+    int cycles = 0;
+    bool hasJumped = false;
+    Data2 jumpTo = 0;
+    ubyte instructionLen = 0;
 
-    void execute() {
+    override void update(ulong delta) {
+        writeln("op start");
         doOp();
+        writeln("op done");
     }
 
     void doOp() {
+        writefln("read start | pc: %s", state.programCounter);
         ubyte currentOpcode = ram.read(state.programCounter);
+        writeln("read done");
+        instructionLen = opcodeLen[currentOpcode];
         final switch (currentOpcode) {
             case 0x00: opNOP(); break; /// NOP
 			case 0x01: opLD_reg16_u16(Reg16.BC); break; /// LD BC, d16
@@ -232,7 +245,7 @@ class CPU {
 			case 0xC8: opRET_if(Flag.Z); break; /// RET Z
 			case 0xC9: opRET(); break; /// RET
 			case 0xCA: opJP_if_u16(Flag.Z); break; /// JP Z, a16
-			case 0xCB: op0xCB(); break; /// Call extra opcodes
+			case 0xCB: op16Bit(); break; /// Call extra opcodes
 			case 0xCC: opCALL_if_u16(Flag.Z); break; /// CALL Z, a16
 			case 0xCD: opCALL_u16(); break; /// CALL a16
 			case 0xCE: opADC_reg8_u8(Reg8.A); break; /// ADC A, d8
@@ -286,91 +299,201 @@ class CPU {
 			case 0xFE: opCP_u8(); break; /// CP d8
 			case 0xFF: opRST(); break; /// RST 7
         }
+        
+        writeln("switch done");
+
+        /// Set flags to either 0 or 1 or ignore them.
+        ubyte fnew = currentOpcode;
+        if (currentOpcode == 0xCD) fnew = ram.read(cast(Data2) (state.programCounter+1));
+        if (fnew) state.setFlags(fnew);
+
+
+        /// Accumulate how many cycles have passed.
+        cycles += opcodeTime[useAltTime][currentOpcode];
+        useAltTime = false;
+
+
+        /// Step program counter by appropriate amount.
+        state.programCounter = cast(Data2) (
+            (jumpTo.u16 * hasJumped) | 
+            ((state.programCounter.u16 + instructionLen) * !hasJumped)
+        ); hasJumped = false;
     }
     
 
-    ushort getU16() {
+    Data2 getU16() {
         return Data2(
-            ram.read(cast(ushort) (state.programCounter+1)),
-            ram.read(cast(ushort) (state.programCounter+2))
-        ).u16;
+            ram.read(cast(Data2) (state.programCounter+1)),
+            ram.read(cast(Data2) (state.programCounter+2))
+        );
     }
-    ubyte getU8(ushort off) {
-        return ram.read(cast(ushort) (state.programCounter+1+off));
+    ubyte getU8(ubyte off = 0) {
+        return ram.read(cast(Data2) (state.programCounter+1+off));
     }
     byte getOff8() {
-        return ram.read(cast(ushort) (state.programCounter+1));
+        return ram.read(cast(Data2) (state.programCounter+1));
     }
-    void callRstVec() {
-        jump(cast(ushort) (currentOpcode & 0x38));
+    Data2 getOffPC() {
+        return Data2(ram.read(cast(Data2) (state.programCounter+1)) + state.programCounter);
     }
 
 
-    ubyte* fromPtr(ushort address) {
+    ubyte fromPtr(Data2 address) {
         return ram.read(address);
     }
 
 
-    void loadReg16(Reg16 r, ushort val) {
+    void loadReg16(Reg16 r, Data2 val) {
         state.reg16[r] = val;
+    }
+    void loadMem16(Data2 dest, Data2 val) {
+        ram.write(dest  , val[1]);
+        ram.write(dest+1, val[0]);
     }
     void loadReg(Reg8 r, ubyte val) {
         state.reg8[r] = val;
     }
-    void loadMem(ubyte dest, ubyte val) {
+    void loadMem(Data2 dest, ubyte val) {
         ram.write(dest, val);
     }
     
 
-    ushort getReg16(Reg16 reg) {
-        return state.reg16[r];
-    }
-    
-    ubyte[2] getReg8(Reg16 reg) {
-        return state.reg8[r*2..r*2+2];
-    }
-
-    ubyte[2] getReg8(Reg8 reg) {
-        return state.reg8[r];
+    void jump(Data2 address, bool doJump = true) {
+        jumpTo = address;
+        hasJumped = doJump;
+        useAltTime = doJump;
     }
 
 
-    void jump(ushort address, bool doJump = true) {
-        if (doJump) state.programCounter = address;
+    void call(Data2 address) {
+        push(state.programCounter + instructionLen);
+        jump(address);
     }
-    // void opJump(byte offset) {
-    //     state.programCounter += offset;
-    // }
-    // void opCallSubroutine(ushort code) {
 
-    // }
-    // void opRestart(ubyte opCode) {
-    //     opPush();
-    //     opJump(opCode & 0b0011_1000);
+    void callReturn(bool doJump = true) {
+        jump(pop(), doJump);
+    }
+
+
+    Data2 pop() {
+        auto val = Data2();
+        val[0] = ram.read(state.stackPointer); state.stackPointer++;
+        val[1] = ram.read(state.stackPointer); state.stackPointer++;
+        return val;
+    }
+
+    void push(Data2 addr) {
+        auto val = Data2(addr);
+        --state.stackPointer; ram.write(state.stackPointer, val[0]);
+        --state.stackPointer; ram.write(state.stackPointer, val[1]);
+    }
+
+
+    void callRstVec() {
+        push(state.programCounter + instructionLen);
+        jump(cast(Data2) (currentOpcode & 0x38));
+    }
+
+
+    enum ArithMode {
+        none, carry, compare,
+    }
+
+    void add(Reg8 r, ubyte val) {
+        adder(r, val, ArithMode.none);
+    }
+
+    void addCarry(Reg8 r, ubyte val) {
+        adder(r, val, ArithMode.carry);
+    }
+
+
+    void add16(Reg16 r, Data2 val) {
+        adder(r*2  , val[0], ArithMode.none);
+        adder(r*2+1, val[1], ArithMode.carry);
+    }
+
+
+    void sub(Reg8 r, ubyte val) {
+        adder(r, 0-val, ArithMode.none);
+    }
+
+    void subCarry(Reg8 r, ubyte val) {
+        adder(r, 0-val, ArithMode.carry);
+    }
+
+    void subCompare(Reg8 r, ubyte val) {
+        adder(r, 0-val, ArithMode.compare);
+    }
+
+    // import std.traits: isIntegral, isSigned;
+    void adder(uint r, int val, ArithMode mode) {
+        enum ubyte mask = cast(ubyte) 0b0000_1111; /// mask starts with 4 0's
+
+        int carry = (mode == ArithMode.carry) & state.flag[Flag.Cy];
+
+        state.flag[Flag.H] = ( (state.reg8[r]&mask) + (val&mask) + carry ) > mask;
+        uint cont = state.reg8[r] + val + carry;
+
+        state.flag[Flag.Z]  = state.reg8[r] == 0;
+        state.flag[Flag.Cy] = cont > 255;
+
+        if (mode != ArithMode.compare) {
+            state.reg8[r] = cast(ubyte) cont;
+        }
+    }
+
+    
+    // void subtractor(uint r, ubyte val, ArithMode mode) {
+    //     enum ubyte mask = cast(ubyte) 0b0000_1111; /// mask starts with 4 0's
+
+    //     int carry = (mode == ArithMode.carry) & state.flag[Flag.Cy];
+
+    //     state.flag[Flag.H]  = (state.reg8[r]&mask) < ((val&mask)+carry);
+    //     state.flag[Flag.Cy] = state.reg8[r] < (val+carry);
+    //     uint cont = state.reg8[r] + val + carry;
+
+    //     if (mode != ArithMode.compare) {
+    //         state.reg8[r] = cast(ubyte) cont;
+    //     }
+    //     state.flag[Flag.Z] = cast(ubyte) cont == 0;
     // }
 
     
-    // void noOp() {}
-
-    // void opStop() {}
-
-    // void opHalt() {}
+    void bitAnd(Reg8 r, ubyte val) {
+        state.reg8[r] &= val;
+        state.flag[Flag.Z] = state.reg8[r] == 0;
+    }
+    void bitOr(Reg8 r, ubyte val) {
+        state.reg8[r] |= val;
+        state.flag[Flag.Z] = state.reg8[r] == 0;
+    }
+    void bitXor(Reg8 r, ubyte val) {
+        state.reg8[r] ^= val;
+        state.flag[Flag.Z] = state.reg8[r] == 0;
+    }
 
     
-    // void opIncreMem(T)(T* var) {
-    //     ram.write(var, *var+1);
-    // }
+    void incrementReg(Reg8 r, int val) {
+        enum ubyte mask = cast(ubyte) 0b0000_1111; /// mask starts with 4 0's
+        state.flag[Flag.H] = cast(ubyte) ( (state.reg8[r]&mask) + val ) > mask;
+        state.reg8[r] += val;
+    }
     
-    // void opDecreMem(T)(T* var) {
-    //     ram.write(var, *var-1);
-    // }
+    void incrementReg16(Reg16 r, int val) {
+        state.reg16[r].u16 += val;
+    }
+    
+    void incrementPtr(Data2 addr, int val) {
+        enum ubyte mask = cast(ubyte) 0b0000_1111; /// mask starts with 4 0's
+        ubyte memval = ram.read(addr);
+        state.flag[Flag.H] = cast(ubyte) ((memval&mask) + val ) > mask;
+        ram.write(addr, cast(ubyte) (memval + val));
+    }
 
-    // void opIncreReg(T)(T* var) {
-    //     *var += 1;
-    // }
-    
-    // void opDecreReg(T)(T* var) {
-    //     *var -= 1;
+
+    // void interupsSet(bool b) {
+    //      = b;
     // }
 
 
@@ -378,245 +501,257 @@ class CPU {
     //     *var = *var ^ cast(T) 0xFFFF;
     // }
 
-    enum ShiftMode {
-        C, 
-        b0 = 0b0000_0001u,
-        b7 = 0b1000_0000u
-    }
-    void opShift(string direction)(ShiftMode mode, ubyte* var) {
-        ubyte inVal = 0;
-        inVal = (mode & *var        ) != 0;
-        inVal = (mode == ShiftMode.C) == state.fC;
-        ubyte outVal = 0;
-        static if (direction == "<<") {
-            outVal = *var & 0b1000_0000u;
-            *var = 0xFF & (*var << 1u) | inVal;
-        }
-        static if (direction == ">>") {
-            outVal = *var & 0b0000_0001u;
-            inVal <<= 7u;
-            *var = 0xFF & (*var >> 1u) | inVal;
-        }
-        state.fC = outVal != 0;
-    }
+    // enum ShiftMode {
+    //     C, 
+    //     b0 = 0b0000_0001u,
+    //     b7 = 0b1000_0000u
+    // }
+    // void opShift(string direction)(ShiftMode mode, ubyte* var) {
+    //     ubyte inVal = 0;
+    //     inVal = (mode & *var        ) != 0;
+    //     inVal = (mode == ShiftMode.C) == state.flag[Flag.Cy];
+    //     ubyte outVal = 0;
+    //     static if (direction == "<<") {
+    //         outVal = *var & 0b1000_0000u;
+    //         *var = 0xFF & (*var << 1u) | inVal;
+    //     }
+    //     static if (direction == ">>") {
+    //         outVal = *var & 0b0000_0001u;
+    //         inVal <<= 7u;
+    //         *var = 0xFF & (*var >> 1u) | inVal;
+    //     }
+    //     state.fC = outVal != 0;
+    // }
 
-    alias opShiftL = opShift!"<<";
-    alias opShiftR = opShift!">>";
+    // alias opShiftL = opShift!"<<";
+    // alias opShiftR = opShift!">>";
     
-    
-    import std.traits: isIntegral, isSigned;
-    void opAdd(T,TT)(T* dest, TT val, byte carry = false) {
-        static assert(isIntegral!T);
-        static immutable T mask = T.max >> 4; /// mask starts with 4 0's
-        state.fH = ( (*dest&mask) + (val&mask) + carry ) > mask;
-        
-        state.fN = false;
-        int container = *dest + val + carry;
-        *dest = cast(T) container;
-        static if(isSigned!T) {
-            state.fZ = *dest == 0;
+
+
+
+    // void opOr(T)(T* var, T val) {
+    //     *var = *var | val;
+    // }
+    // void opAnd(T)(T* var, T val) {
+    //     *var = *var & val;
+    // }
+    // void opXor(T)(T* var, T val) {
+    //     *var = *var ^ val;
+    // }
+    // void opBitCompare(T)(T* var, T val) {
+    //     T comparison = cast(T) *var - val;
+    // }
+
+
+    void op16Bit() {//* This is the 16 bit opcode prefix
+        enum SWITCH_OP = q{
+            final switch (op&0b1100_0000) {
+                case 0x00:
+                    final switch (op&0b1111_1000) {
+                        case 0x00: opRLC_%1$s(%2$s); break;
+                        case 0x08: opRRC_%1$s(%2$s); break;
+                        case 0x10: opRL_%1$s(%2$s); break;
+                        case 0x18: opRR_%1$s(%2$s); break;
+                        case 0x20: opSLA_%1$s(%2$s); break;
+                        case 0x28: opSRA_%1$s(%2$s); break;
+                        case 0x30: opSWAP_%1$s(%2$s); break;
+                        case 0x38: opSRL_%1$s(%2$s); break;
+                    } break;
+                case 0x40: opBIT_%1$s(%2$s, (op&0b0011_1000) >> 3); break;
+                case 0x80: opRES_%1$s(%2$s, (op&0b0011_1000) >> 3); break;
+                case 0xC0: opSET_%1$s(%2$s, (op&0b0011_1000) >> 3); break;
+            }
+        };
+        ubyte op = getU8;
+
+        import std.format:format;
+        if ((op&0b111) == 0b110) {
+            mixin (format!SWITCH_OP("ptrReg", "Reg16.HL"));
         }
         else {
-            state.fZ = 0;
+            Reg8 reg;
+            switch (op&0b111) {
+                case 0b000: .. case 0b101: reg = cast(Reg8)( 2 + (op&0b111) ); break;
+                case 0b111:                reg = Reg8.A; break;
+                default: assert(0);
+            }
+            mixin (format!SWITCH_OP("reg8", "reg"));
         }
-        state.fC = container > T.max;
-    }
-
-    void opSub(T)(T* dest, T val, byte carry = false) {
-        opAdd!T(dest, -(cast(int) val), cast(byte) (0-carry));
-    }
-
-
-    void opDecimal() {
-
-    }
-
-
-    void opOr(T)(T* var, T val) {
-        *var = *var | val;
-    }
-    void opAnd(T)(T* var, T val) {
-        *var = *var & val;
-    }
-    void opXor(T)(T* var, T val) {
-        *var = *var ^ val;
-    }
-    void opBitCompare(T)(T* var, T val) {
-        T comparison = cast(T) *var - val;
-    }
+    //*/
+}
 
 /// instructions
-    void opNOP() {}
+    pragma(inline, true):
+        void opNOP() {}
 
-    void opHALT() {}
-    
-    void opSTOP() {}
-
-
-
-    void opADC_reg8_ptrReg(Reg8 r, Reg16 r2) {addCarry(r, fromPtr(state.reg16[r2]));}
-    void opADC_reg8_reg8  (Reg8 r, Reg8 r2)  {addCarry(r, state.reg8[r2]);}
-    void opADC_reg8_u8    (Reg8 r)           {addCarry(r, getU8);}
-
-    void opADD_reg8_ptrReg(Reg8 r, Reg16 r2) {add(r, fromPtr(state.reg16[r2]));}
-    void opADD_reg8_reg8  (Reg8 r, Reg8 r2)  {add(r, state.reg8[r2]);}
-    void opADD_reg8_u8    (Reg8 r)           {add(r, getU8);}
-
-    void opADD_HL_reg16(Reg16 r2) {add16(Reg16.HL, state.reg16[r2]);}
-
-    void opADD_HL_SP(Reg16 r)     {add16(Reg16.HL, state.stackPointer);}
-    void opADD_SP_off8()          {state.stackPointer += getOff8;}
-
-    void opSBC_reg8_ptrReg(Reg8 r, Reg16 r2) {subCarry(r, fromPtr(state.reg16[r2]));}
-    void opSBC_reg8_reg8  (Reg8 r, Reg8 r2)  {subCarry(r, state.reg8[r2]);}
-    void opSBC_reg8_u8    (Reg8 r)           {subCarry(r, getU8);}
-
-    void opSUB_reg8_ptrReg(Reg8 r, Reg16 r2) {sub(r, fromPtr(state.reg16[r2]));}
-    void opSUB_reg8_reg8  (Reg8 r, Reg8 r2)  {sub(r, state.reg8[r2]);}
-    void opSUB_reg8_u8    (Reg8 r)           {sub(r, getU8);}
-
-    void opCP_ptrReg(Reg16 r2) {subCompare(Reg8.A, fromPtr(state.reg16[r2]));}
-    void opCP_reg8  (Reg8 r2)  {subCompare(Reg8.A, state.reg8[r2]);}
-    void opCP_u8    ()         {subCompare(Reg8.A, getU8);}
+        void opHALT() {assert(0);}
+        
+        void opSTOP() {assert(0);}
 
 
 
-    void opAND_ptrReg(Reg16 r) {bitAnd(Reg8.A, fromPtr(state.reg16[r]));}
-    void opAND_reg8  (Reg8 r)  {bitAnd(Reg8.A, state.reg8[r]);}
-    void opAND_u8()            {bitAnd(Reg8.A, getU8);}
+        void opADC_reg8_ptrReg(Reg8 r, Reg16 r2) {addCarry(r, fromPtr(state.reg16[r2]));}
+        void opADC_reg8_reg8  (Reg8 r, Reg8 r2)  {addCarry(r, state.reg8[r2]);}
+        void opADC_reg8_u8    (Reg8 r)           {addCarry(r, getU8);}
 
-    void opOR_ptrReg(Reg16 r)  {bitOr(Reg8.A, fromPtr(state.reg16[r]));}
-    void opOR_reg8  (Reg8 r)   {bitOr(Reg8.A, state.reg8[r]);}
-    void opOR_u8()             {bitOr(Reg8.A, getU8);}
-    
-    void opXOR_ptrReg(Reg16 r) {bitXor(Reg8.A, fromPtr(state.reg16[r]));}
-    void opXOR_reg8  (Reg8 r)  {bitXor(Reg8.A, state.reg8[r]);}
-    void opXOR_u8()            {bitXor(Reg8.A, getU8);}
+        void opADD_reg8_ptrReg(Reg8 r, Reg16 r2) {add(r, fromPtr(state.reg16[r2]));}
+        void opADD_reg8_reg8  (Reg8 r, Reg8 r2)  {add(r, state.reg8[r2]);}
+        void opADD_reg8_u8    (Reg8 r)           {add(r, getU8);}
 
+        void opADD_HL_reg16(Reg16 r2) {add16(Reg16.HL, state.reg16[r2]);}
 
+        void opADD_HL_SP(Reg16 r)     {add16(Reg16.HL, state.stackPointer);}
+        void opADD_SP_off8()          {state.stackPointer.u16 += getOff8;}
 
-    void opCCF() {setFlags(0b0110_0001);}
+        void opSBC_reg8_ptrReg(Reg8 r, Reg16 r2) {subCarry(r, fromPtr(state.reg16[r2]));}
+        void opSBC_reg8_reg8  (Reg8 r, Reg8 r2)  {subCarry(r, state.reg8[r2]);}
+        void opSBC_reg8_u8    (Reg8 r)           {subCarry(r, getU8);}
 
-    void opSCF() {setFlags(0b0111_0001);}
+        void opSUB_reg8_ptrReg(Reg8 r, Reg16 r2) {sub(r, fromPtr(state.reg16[r2]));}
+        void opSUB_reg8_reg8  (Reg8 r, Reg8 r2)  {sub(r, state.reg8[r2]);}
+        void opSUB_reg8_u8    (Reg8 r)           {sub(r, getU8);}
 
-    void opCPL() {setFlags(0b0110_0110); state.reg8[Reg8.A] = ~state.reg8[Reg8.A];}
-
-    void opDAA() {assert(0);}
-    
-
-    void opDEC_ptrReg(Reg16 r) {loadMem(state.reg16[r], fromPtr(state.reg16[r]) - 1);}
-    void opDEC_reg16 (Reg16 r) {loadReg(r, state.reg16[r] - 1);}
-    void opDEC_reg8  (Reg8 r)  {loadReg(r, state.reg8[r] - 1);}
-    void opDEC_SP()            {state.stackPointer -= 1;}
-
-    void opINC_ptrReg(Reg16 r) {loadMem(state.reg16[r], fromPtr(state.reg16[r]) + 1);}
-    void opINC_reg16 (Reg16 r) {loadReg(r, state.reg16[r] + 1);}
-    void opINC_reg8  (Reg8 r)  {loadReg(r, state.reg8[r] + 1);}
-    void opINC_SP()            {state.stackPointer += 1;}
+        void opCP_ptrReg(Reg16 r2) {subCompare(Reg8.A, fromPtr(state.reg16[r2]));}
+        void opCP_reg8  (Reg8 r2)  {subCompare(Reg8.A, state.reg8[r2]);}
+        void opCP_u8    ()         {subCompare(Reg8.A, getU8);}
 
 
 
-    void opDI() {interupsSet(true);}
-    void opEI() {interupsSet(false);}
+        void opAND_ptrReg(Reg16 r) {bitAnd(Reg8.A, fromPtr(state.reg16[r]));}
+        void opAND_reg8  (Reg8 r)  {bitAnd(Reg8.A, state.reg8[r]);}
+        void opAND_u8()            {bitAnd(Reg8.A, getU8);}
+
+        void opOR_ptrReg(Reg16 r)  {bitOr(Reg8.A, fromPtr(state.reg16[r]));}
+        void opOR_reg8  (Reg8 r)   {bitOr(Reg8.A, state.reg8[r]);}
+        void opOR_u8()             {bitOr(Reg8.A, getU8);}
+        
+        void opXOR_ptrReg(Reg16 r) {bitXor(Reg8.A, fromPtr(state.reg16[r]));}
+        void opXOR_reg8  (Reg8 r)  {bitXor(Reg8.A, state.reg8[r]);}
+        void opXOR_u8()            {bitXor(Reg8.A, getU8);}
 
 
 
-    void opRST() {jump(getRstVec);}
+        void opCCF() {state.flag[Flag.Cy] = !state.flag[Flag.Cy];}
 
-    void opCALL_if_u16(Flag f) {}
-    void opCALL_u16() {}
+        void opSCF() {state.flag[Flag.Cy] = true;}
 
-    void opRET_if(Flag f) {if (state.readFlag(f)) returnOp();}
-    void opRET_reg8(Reg8 r) {}
-    void opRET() {}
-    void opRETI() {}
+        void opCPL() {state.reg8[Reg8.A] = 0xFF ^ state.reg8[Reg8.A];}
 
-    void opJP_if_u16 (Flag f)    {jump(getU16(), state.readFlag(f));}
-    void opJP_u16()              {jump(getU16());}
-    void opJR_if_off8(Flag f)    {jump(getOffPC(), state.readFlag(f));}
-    void opJR_off8()             {jump(getOffPC());}
-    void opJP_reg16  (Reg16 r)   {jump(state.reg16[r]);}
+        void opDAA() {assert(0);}
+        
 
+        
+        void opDEC_ptrReg(Reg16 r) {incrementPtr  (state.reg16[r], -1);}
+        void opDEC_reg16 (Reg16 r) {incrementReg16(r, -1);}
+        void opDEC_reg8  (Reg8 r)  {incrementReg  (r, -1);}
+        void opDEC_SP()            {state.stackPointer.u16 -= 1;}
 
-
-    void opPOP_reg16(Reg16 r) {}
-    void opPUSH_reg16(Reg16 r) {}
-    /// load into mem
-    void opLD_ptr16_reg8 (Reg8 r)            {loadMem(getU16, state.reg8[r]);}
-    void opLD_ptr16_SP()                     {loadMem(getU16, state.stackPointer);}
-    void opLD_ptrReg_reg8(Reg16 r1, Reg8 r2) {loadMem(state.reg16[r1], state.reg8[r2]);}
-    void opLD_ptrReg_u8  (Reg16 r)           {loadMem(state.reg16[r], getU8);}
-    void opLD_ptrHL_dec_reg8(Reg8 r)         {loadMem(state.reg16[Reg16.HL], state.reg8[r]); state.reg16[Reg16.HL]--;}
-    void opLD_ptrHL_inc_reg8(Reg8 r)         {loadMem(state.reg16[Reg16.HL], state.reg8[r]); state.reg16[Reg16.HL]++;}
-    /// load into register
-    void opLD_reg8_ptr16    (Reg8 r)            {loadReg(r, fromPtr(getU16));}
-    void opLD_reg8_ptrReg   (Reg8 r1, Reg16 r2) {loadReg(r1, fromPtr(state.reg16[r2]));}
-    void opLD_reg8_reg8     (Reg8 r1, Reg8 r2)  {loadReg(r1, state.reg8[r2]);}
-    void opLD_reg8_u8       (Reg8 r)            {loadReg(r, getU8);}
-    void opLD_reg8_ptrHL_dec(Reg8 r)            {loadReg(r, fromPtr(Reg16.HL)); state.reg16[Reg16.HL]--;}
-    void opLD_reg8_ptrHL_inc(Reg8 r)            {loadReg(r, fromPtr(Reg16.HL)); state.reg16[Reg16.HL]++;}
-    /// 16 bit loads
-    void opLD_SP_reg16    (Reg16 r) {state.stackPointer = state.reg16[r];}
-    void opLD_SP_u16()              {state.stackPointer = getU16;}
-    void opLD_reg16_off8SP(Reg16 r)  {loadReg16(r, state.stackPointer+getOff8);}
-    void opLD_reg16_u16   (Reg16 r) {loadReg16(r, getU16);}
-    /// i/o loads
-    void opLDH_ioRef8_reg8  (Reg8 r)           {loadMem(0xFF00+getU8,           state.reg8[r]);}
-    void opLDH_ioRefReg_reg8(Reg8 r1, Reg8 r2) {loadMem(0xFF00+state.reg8[r1], state.reg8[r2]);}
-    void opLDH_reg8_ioRef8  (Reg8 r)           {loadReg(r,                       0xFF00+getU8);}
-    void opLDH_reg8_ioRefReg(Reg8 r1, Reg8 r2) {loadReg(r1,             0xFF00+state.reg8[r2]);}
-    
-
-
-    void opRES_ptrReg() {}
-    void opRES_reg8() {}
+        void opINC_ptrReg(Reg16 r) {incrementPtr  (state.reg16[r], 1);}
+        void opINC_reg16 (Reg16 r) {incrementReg16(r, 1);}
+        void opINC_reg8  (Reg8 r)  {incrementReg  (r, 1);}
+        void opINC_SP()            {state.stackPointer.u16 += 1;}
 
 
 
-    void opRL_ptrReg() {}
-    void opRL_reg8() {}
-    void opRLA() {}
-    void opRLC_ptrReg() {}
-    void opRLC_reg8() {}
-    void opRLCA() {}
-
-    void opRR_ptrReg() {}
-    void opRR_reg8() {}
-    void opRRA() {}
-    void opRRC_ptrReg() {}
-    void opRRC_reg8() {}
-    void opRRCA() {}
-
-    void opSLA_ptrReg() {}
-    void opSLA_reg8() {}
-    void opSRA_ptrReg() {}
-    void opSRA_reg8() {}
-    void opSRL_ptrReg() {}
-    void opSRL_reg8() {}
+        void opDI() {state.imeFlag = true;}
+        void opEI() {state.imeFlag = false;}
 
 
 
-    void opSET_ptrReg() {}
-    void opSET_reg8() {}
-    
-    void opBIT_ptrReg() {}
-    void opBIT_reg8() {}
+        void opRST() {callRstVec();}
 
-    void opSWAP_ptrReg() {}
-    void opSWAP_reg8() {}
+        void opCALL_if_u16(Flag f) {}
+        void opCALL_u16() {}
+
+        void opRET_if(Flag f) {callReturn(state.flag[f]);}
+        void opRET_reg8(Reg8 r) {}
+        void opRET() {callReturn(true);}
+        void opRETI() {opRET; opEI;}
+
+        void opJP_if_u16 (Flag f)    {jump(getU16(), state.flag[f]);}
+        void opJP_u16()              {jump(getU16());}
+        void opJR_if_off8(Flag f)    {jump(getOffPC(), state.flag[f]);}
+        void opJR_off8()             {jump(getOffPC());}
+        void opJP_reg16  (Reg16 r)   {jump(state.reg16[r]);}
 
 
-    
-    void op0xCB() {
-        final switch (0) {
-            case 0: break;
-        }
-    }
+
+        void opPOP_reg16(Reg16 r) {}
+        void opPUSH_reg16(Reg16 r) {}
+        /// load into mem
+        void opLD_ptr16_reg8 (Reg8 r)            {loadMem(getU16, state.reg8[r]);}
+        void opLD_ptrReg_reg8(Reg16 r1, Reg8 r2) {loadMem(state.reg16[r1], state.reg8[r2]);}
+        void opLD_ptrReg_u8  (Reg16 r)           {loadMem(state.reg16[r], getU8);}
+        void opLD_ptrHL_dec_reg8(Reg8 r)         {loadMem(state.reg16[Reg16.HL], state.reg8[r]); state.reg16[Reg16.HL]--;}
+        void opLD_ptrHL_inc_reg8(Reg8 r)         {loadMem(state.reg16[Reg16.HL], state.reg8[r]); state.reg16[Reg16.HL]++;}
+        /// load into register
+        void opLD_reg8_ptr16    (Reg8 r)            {loadReg(r, fromPtr(getU16));}
+        void opLD_reg8_ptrReg   (Reg8 r1, Reg16 r2) {loadReg(r1, fromPtr(state.reg16[r2]));}
+        void opLD_reg8_reg8     (Reg8 r1, Reg8 r2)  {loadReg(r1, state.reg8[r2]);}
+        void opLD_reg8_u8       (Reg8 r)            {loadReg(r, getU8);}
+        void opLD_reg8_ptrHL_dec(Reg8 r)            {loadReg(r, fromPtr(state.reg16[Reg16.HL])); state.reg16[Reg16.HL]--;}
+        void opLD_reg8_ptrHL_inc(Reg8 r)            {loadReg(r, fromPtr(state.reg16[Reg16.HL])); state.reg16[Reg16.HL]++;}
+        /// Stack Loads
+        void opLD_SP_reg16    (Reg16 r) {state.stackPointer = state.reg16[r];}
+        void opLD_SP_u16()              {state.stackPointer = getU16;}
+        void opLD_reg16_off8SP(Reg16 r) {loadReg16(r, state.stackPointer+getOff8);}
+        void opLD_ptr16_SP()            {loadMem16(getU16, state.stackPointer);}
+        /// 16 bit loads
+        void opLD_reg16_u16   (Reg16 r) {loadReg16(r, getU16);}
+        /// i/o loads
+        void opLDH_ioRef8_reg8  (Reg8 r)           {loadMem(Data2(0xFF00|getU8),           state.reg8[r]);}
+        void opLDH_ioRefReg_reg8(Reg8 r1, Reg8 r2) {loadMem(Data2(0xFF00|state.reg8[r1]), state.reg8[r2]);}
+        void opLDH_reg8_ioRef8  (Reg8 r)           {loadReg(r,              fromPtr(Data2(0xFF00|getU8)));}
+        void opLDH_reg8_ioRefReg(Reg8 r1, Reg8 r2) {loadReg(r1,    fromPtr(Data2(0xFF00|state.reg8[r2])));}
+
+
+
+        void opRLA()  {opRL_reg8 (Reg8.A);}
+        void opRLCA() {opRLC_reg8(Reg8.A);}
+        void opRRA()  {opRR_reg8 (Reg8.A);}
+        void opRRCA() {opRRC_reg8(Reg8.A);}
+
+
+        void opRLC_ptrReg(Reg16 r) {assert(0);}
+        void opRLC_reg8  (Reg8 r)  {assert(0);}
+        void opRRC_ptrReg(Reg16 r) {assert(0);}
+        void opRRC_reg8  (Reg8 r)  {assert(0);}
+
+        void opRL_ptrReg (Reg16 r) {assert(0);}
+        void opRL_reg8   (Reg8 r)  {assert(0);}
+        void opRR_ptrReg (Reg16 r) {assert(0);}
+        void opRR_reg8   (Reg8 r)  {assert(0);}
+
+        void opSLA_ptrReg(Reg16 r) {assert(0);}
+        void opSLA_reg8  (Reg8 r)  {assert(0);}
+        void opSRA_ptrReg(Reg16 r) {assert(0);}
+        void opSRA_reg8  (Reg8 r)  {assert(0);}
+
+
+        void opSWAP_ptrReg(Reg16 r) {assert(0);}
+        void opSWAP_reg8  (Reg8 r)  {assert(0);}
+
+
+        void opSRL_ptrReg(Reg16 r) {assert(0);}
+        void opSRL_reg8  (Reg8 r)  {assert(0);}
+
+
+        void opBIT_ptrReg(Reg16 r, int bit) {assert(0);}
+        void opBIT_reg8  (Reg8 r, int bit)  {assert(0);}
+
+        void opRES_ptrReg(Reg16 r, int bit) {assert(0);}
+        void opRES_reg8  (Reg8 r, int bit)  {assert(0);}
+
+        void opSET_ptrReg(Reg16 r, int bit) {assert(0);}
+        void opSET_reg8  (Reg8 r, int bit)  {assert(0);}
+
+
+        
 }
 
 
 
 
-// ushort joinBytes(ubyte a, ubyte b) {
+// Data2 joinBytes(ubyte a, ubyte b) {
 
 // }
