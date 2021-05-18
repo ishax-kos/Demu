@@ -1,0 +1,39 @@
+{
+	"type": "code-d",
+	"request": "launch",
+	"name": "Debug D project",
+	"cwd": "${command:dubWorkingDirectory}",
+    "program": "${command:dubTarget}",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "(LLDB) Launch",
+            "program": "${workspaceFolder}/demulator.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "attach",
+            "name": "(LLDB) Attach",
+            "program": "${workspaceFolder}/demulator.exe"
+        },
+        {
+            "name": "(gdb) Attach",
+            "type": "cppdbg",
+            "request": "attach",
+            "program": "${workspaceFolder}/demulator.exe",
+            "processId": "${command:pickProcess}",
+            "MIMode": "gdb",
+            "miDebuggerPath": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        }
+    ]
+}
