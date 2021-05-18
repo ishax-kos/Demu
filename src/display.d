@@ -17,7 +17,7 @@ class DisplayContext : Update {
 
     this(uint width, uint height, GameBoyMemoryState* ram) {
         version(Windows) {
-            auto ret = loadSDL("libs/SDL2.dll");
+            auto ret = loadSDL("lib/SDL2.dll");
             if(ret != sdlSupport) {
                 // stderr.writef!"could not load lib: %s\n"(SDL_GetError());
                 assert(0);
