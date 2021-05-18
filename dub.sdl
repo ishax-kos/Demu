@@ -3,5 +3,8 @@ description "\"A gameboy color emulator. Sorta. It's meant to just run gbkiss ga
 authors "Isaac"
 copyright "Copyright © 2021, Isaac"
 license "proprietary"
+
+targetPath "bin"
+
 dependency "bindbc-sdl" version="~>0.21.2"
 versions "SDL_2014"
