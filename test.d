@@ -1,22 +1,17 @@
-module test;
 import std.stdio;
+import std.format;
+
+enum NUMBER = 11;
+
+enum TOKEN_STRING = q{
+    int giveMe%1$s() {
+        return %1$s;
+    }
+};
 
 
-// enum string GET_CARRY = `
-//     asm { 
-//         lahf;
-//         mov , AH;
-//     \}`;
-
-
-ubyte getCarry() {
-    ubyte ret;
-    ubyte val = 254;
-    val += 1;
-    asm {setc ret;}
-    return ret;
-}
+mixin(TOKEN_STRING.format(NUMBER));
 
 void main() {
-    writefln!"%b"(getCarry);
+    writefln("the value is %s.", giveMe11);
 }
