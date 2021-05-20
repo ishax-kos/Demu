@@ -3,6 +3,8 @@ module engine.memory;
 import std.format: format;
 import engine.carts.cart;
 import data;
+import std.stdio;
+
 // import std.bitmanip: BitArray;
 
 
@@ -46,23 +48,7 @@ align(1)
 struct GameBoyCPUState {
     union {
         ubyte[8] reg8;
-        // struct {
-        //     ubyte rA;
-        //     ubyte rF;
-        //     ubyte rB;
-        //     ubyte rC;
-        //     ubyte rD;
-        //     ubyte rE;
-        //     ubyte rH;
-        //     ubyte rL;
-        // }
         Data2[4] reg16;
-        // struct {
-        //     ushort rAF;
-        //     ushort rBC;
-        //     ushort rDE;
-        //     ushort rHL;
-        // }
         struct {
             ubyte accum;
             Flag8 flag;
@@ -72,8 +58,11 @@ struct GameBoyCPUState {
     Data2 stackPointer;
 
     bool imeFlag = 0;
+    
 
-    // bool[4] flag;
+    this(string sytemType) {
+
+    }
 
 
     void setFlags(ubyte mask_flags) {
@@ -84,30 +73,8 @@ struct GameBoyCPUState {
         }
     }
 
-
-    // bool readFlag(Flag f) {
-    //     return flag[f&3] ^ cast(bool) (f>>2);
-    // }
-    
-
-    // void writeFlag(Flag f, bool val) {
-    //     flag[f&3] = val;
-    //     reg8[1] = flag[0]<<7 | flag[1]<<6 | flag[2]<<5 | flag[3]<<4;
-    // }
-
-    void Cy(bool val) {flag[Flag.Cy] = val;}
-    bool Cy() {return flag[Flag.Cy];}
-
-
-    // bool readRegister8(Reg8 reg) {
-    //     return reg8[reg];
-    // }
-
-
-    // bool writeRegister(Flag flag) {
-    //     return 0;
-    // }
-
+    // void Cy(bool val) {flag[Flag.Cy] = val;}
+    // bool Cy() {return flag[Flag.Cy];}
 }
 
 
@@ -121,7 +88,18 @@ struct GameBoyMemoryState {
     auto oam   = new BankSet!0xA0();
     auto ioReg = new BankSet!0x80();
     auto hram  = new BankSet!0x7F();
+
+    /// special memory registers
     ubyte ieReg;
+    ubyte dividerReg;
+    ubyte timerReg;
+    ubyte timeModuloReg;
+    ubyte timeControlReg;
+
+
+    this(string romFileString) {
+        cart = loadCart(romFileString);
+    }
 
 
     enum READ_WRITE = q{
@@ -141,7 +119,6 @@ struct GameBoyMemoryState {
 
 
     ubyte read(Data2 address) {
-        import std.format: format;
         mixin(format!READ_WRITE(
             q{return cart.read(address.u16);}, /// bank slot 1
             q{return cart.read(address.u16);}, /// bank slot 2
@@ -160,20 +137,31 @@ struct GameBoyMemoryState {
     
     
     ubyte write(Data2 address, ubyte val) {
-        import std.format: format;
         mixin(format!READ_WRITE(
-            q{cart.write(address.u16, val);}, /// bank slot 1
-            q{cart.write(address.u16, val);}, /// bank slot 2
-            q{vram.currentBank[address.u16-0x8000] = val;}, /// Video RAM
-            q{cart.write(address.u16, val);}, /// RAM bank slot
-            q{wram.bank[0][address.u16-0xC000] = val;}, /// Work RAM 1
-            q{wram.currentBank[address.u16-0xD000] = val;}, /// Work RAM 2 / WRAM Bank slot
-            q{assert(0);}, /// Mirror of WRAM
-            q{oam.bank[0][address.u16-0xFE00] = val;}, /// OAM (Sprite attributes)
-            q{assert(0);}, /// Invalid
-            q{ioReg.bank[0][address.u16-0xFF00] = val;}, /// I/O
-            q{hram.bank[0][address.u16-0xFF80] = val;}, /// High RAM ?????
-            q{assert(0);} /// Interrupts Enable Register (IE)
+            /* bank slot 1 */ 
+            q{cart.write(address.u16, val);},
+            /* bank slot 2 */
+            q{cart.write(address.u16, val);}, /// 
+            /* Video RAM */
+            q{vram.currentBank[address.u16-0x8000] = val;}, /// 
+            /* RAM bank slot */
+            q{cart.write(address.u16, val);}, /// 
+            /* Work RAM 1 */
+            q{wram.bank[0][address.u16-0xC000] = val;}, /// 
+            /* Work RAM 2 / WRAM Bank slot */
+            q{wram.currentBank[address.u16-0xD000] = val;}, /// 
+            /* Mirror of WRAM */
+            q{assert(0);}, /// 
+            /* OAM (Sprite attributes) */
+            q{oam.bank[0][address.u16-0xFE00] = val;}, /// 
+            /* Invalid */
+            q{assert(0);}, /// 
+            /* I/O */
+            q{ioReg.bank[0][address.u16-0xFF00] = val;}, /// 
+            /* High RAM ????? */
+            q{hram.bank[0][address.u16-0xFF80] = val;}, /// 
+            /* Interrupts Enable Register (IE) */
+            q{assert(0);} /// 
         ));
         return val;
     }

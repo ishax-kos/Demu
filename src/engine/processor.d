@@ -19,7 +19,7 @@ alias u8 = ubyte;
 
 @nogc:
 class CPU : Update {
-    GameBoyCPUState state = GameBoyCPUState();
+    GameBoyCPUState state;
     GameBoyMemoryState ram = GameBoyMemoryState();
     // alias memWrite() = ram.write();
     // alias memRead() = ram.read();
@@ -30,16 +30,20 @@ class CPU : Update {
     Data2 jumpTo = 0;
     ubyte instructionLen = 0;
 
+
+    this(string filename, string systemType = "cgb") {
+        state = GameBoyCPUState(systemType);
+        ram = GameBoyMemoryState(filename);
+    }
+
+
     override void update(ulong delta) {
-        writeln("op start");
         doOp();
-        writeln("op done");
     }
 
     void doOp() {
-        writefln("read start | pc: %s", state.programCounter);
+        writef("PC: $%04X ", state.programCounter);
         ubyte currentOpcode = ram.read(state.programCounter);
-        writeln("read done");
         instructionLen = opcodeLen[currentOpcode];
         final switch (currentOpcode) {
             case 0x00: opNOP(); break; /// NOP
@@ -300,7 +304,6 @@ class CPU : Update {
 			case 0xFF: opRST(); break; /// RST 7
         }
         
-        writeln("switch done");
 
         /// Set flags to either 0 or 1 or ignore them.
         ubyte fnew = currentOpcode;
@@ -318,6 +321,9 @@ class CPU : Update {
             (jumpTo.u16 * hasJumped) | 
             ((state.programCounter.u16 + instructionLen) * !hasJumped)
         ); hasJumped = false;
+
+        writefln!" %02X"(currentOpcode);
+        assert(state.programCounter < 0xFFFF);
     }
     
 
@@ -582,7 +588,7 @@ class CPU : Update {
 
 /// instructions
     pragma(inline, true):
-        void opNOP() {}
+        void opNOP() {write("NOP");}
 
         void opHALT() {assert(0);}
         

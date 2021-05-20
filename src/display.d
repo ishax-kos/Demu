@@ -5,7 +5,13 @@ import process;
 import engine.memory;
 
 
-// import bindbc.sdl.image;
+enum PIXEL_MODE_SWITCH = "index8";
+static if (PIXEL_MODE_SWITCH == "index8") {
+    enum PIXEL_MODE = SDL_PIXELFORMAT_INDEX8;
+}
+static if (PIXEL_MODE_SWITCH == "channel16"){
+    enum PIXEL_MODE = SDL_PIXELFORMAT_RGBA5551;
+}
 
 
 class DisplayContext : Update {
@@ -43,8 +49,7 @@ class DisplayContext : Update {
             assert(0);
         }
 
-        // auto surf0 = SDL_CreateRGBSurfaceWithFormat(0,  256,256,  16,  SDL_PIXELFORMAT_RGBA5551);
-        // if (surf0 == null) assert(0, "No Surface");
+
         gbScreen = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA5551, SDL_TEXTUREACCESS_STREAMING, 256,256);
         if (gbScreen == null) assert(0, "No Tex");
         // SDL_FreeSurface(surf0);
@@ -89,9 +94,10 @@ class DisplayContext : Update {
         ) {
         // uint len = cast(int) buffer.length;
         SDL_Rect area = SDL_Rect(0,0,256,256);
-        SDL_Rect areaScreen = SDL_Rect(8,8,256*4,256*4);
+        SDL_Rect areaScreen = SDL_Rect(8,8,256*3,256*3);
+        SDL_SetWindowSize(window, areaScreen.w+areaScreen.x*2, areaScreen.h+areaScreen.y*2);
         uint tileArea = 0;
-        enum uint blockSize = 384 * 64; /// Tiles * pixels per tile
+        enum uint blockSize = 1024 * 64; /// Tiles * pixels per tile
         void* pixels;
         int pitch; /// unused
         SDL_LockTexture(gbScreen, &area, &pixels, &pitch);
@@ -102,28 +108,32 @@ class DisplayContext : Update {
         SDL_RenderCopy(renderer, gbScreen, &area, &areaScreen);
     }
     void drawTile(ubyte[] buffer, uint x, uint y) {};
-
-    
 }
 
 
 private 
-void expandColor(void[] oBuffer, ubyte[] iBuffer) {
-    static ushort[4] pallet = [
+void expandColor(
+    void[] oBuffer, 
+    ubyte[] iBuffer, 
+    ushort[4][] palettes = [[
         0b11111_01111_00000_1,
         0b00111_01111_00011_1,
         0b01111_01111_10011_1,
         0b11111_11111_00000_1
-    ];
-    // ushort[] newBuffer;
-    // newBuffer.length = buffer.length * 4;
-
+    ]]
+    ) {
     foreach (i; 0..oBuffer.length/2) {
         int subI = i%4;
-        // int j = i%4;
-        (cast(ushort[]) oBuffer)[i] = pallet[i%4];
-        // newBuffer[i] = pallet[ (buffer[subI] >> (subI*2)) & 3 ];
+        (cast(ushort[]) oBuffer)[i] = palettes[0][i%4];
     }
 }
 
 
+void wait(uint timeMs) {
+    SDL_Delay(timeMs);
+}
+
+
+void getPalette() {
+    
+}
