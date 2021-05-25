@@ -9,7 +9,7 @@
             "type": "lldb",
             "request": "launch",
             "name": "(LLDB) Launch",
-            "program": "${workspaceFolder}/demulator.exe",
+            "program": "${workspaceFolder}/bin/demulator.exe",
             "args": [],
             "cwd": "${workspaceFolder}"
         },
@@ -17,13 +17,13 @@
             "type": "lldb",
             "request": "attach",
             "name": "(LLDB) Attach",
-            "program": "${workspaceFolder}/demulator.exe"
+            "program": "${workspaceFolder}/bin/demulator.exe"
         },
         {
             "name": "(gdb) Attach",
             "type": "cppdbg",
             "request": "attach",
-            "program": "${workspaceFolder}/demulator.exe",
+            "program": "${workspaceFolder}/bin/demulator.exe",
             "processId": "${command:pickProcess}",
             "MIMode": "gdb",
             "miDebuggerPath": "gdb",
