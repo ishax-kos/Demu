@@ -6,5 +6,7 @@ docs/
 *.o
 *.obj
 *.lst
-test.*
+test.exe
+test.c
+test.d
 bin/

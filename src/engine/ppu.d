@@ -5,7 +5,7 @@ import display;
 import engine.memory;
 
 class PPU {
-    DisplayContext display;
+    Frame display;
     BankSet!0x4000 vram;
     BankSet!0xA0   oam;
 
@@ -25,7 +25,7 @@ class PPU {
     ubyte colorPalletOBJ_Data;
 
 
-    this(ref GameBoyMemoryState ram, DisplayContext display) {
+    this(ref GameBoyMemoryState ram, Frame display) {
         this.vram = ram.vram;
         this.oam = ram.oam;
         this.display = display;

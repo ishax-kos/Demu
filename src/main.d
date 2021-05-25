@@ -1,9 +1,10 @@
 module main;
 import std.stdio;
 
-import display;
+import gbdisplay;
 import engine.processor;
 import engine.ppu;
+import core.time;
 
 
 
@@ -17,24 +18,30 @@ void update(){
 }
 
 
-void main(string[] args) {
+int main(string[] args) {
     string romFileString = "";
     if (args.length > 1) {
         romFileString = args[1];
     }
 
     auto system = new CPU(romFileString);
-    auto display = new DisplayContext(SCREEN_WIDTH, SCREEN_HEIGHT, &(system.ram));
+    auto display = new GBMainFrame("", SCREEN_WIDTH, SCREEN_HEIGHT, true);
+    display.addSubframe(new GBDebugger("Debug", SCREEN_WIDTH/2, SCREEN_HEIGHT, false), false);
     auto ppu = new PPU(system.ram, display);
 
+    ulong delay = MonoTime.currTime.ticks;
+    immutable ulong TPS = MonoTime.ticksPerSecond();
+
     display.drawGBRegion();
-    while (display.noExit()) {
-        system.update(0);
-        display.update(0);
-        wait(300);
-        
+    while (display.noShutdown) {
+        auto deltaAccum = MonoTime.currTime.ticks - delay;
+        if (deltaAccum > TPS/10) {
+            delay = MonoTime.currTime.ticks;
+            system.update(deltaAccum);
+            display.update(deltaAccum);
+        }
     }
- 
-    // displayExit(display);
+
+    return 0;
 }
 

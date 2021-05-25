@@ -1,17 +1,25 @@
 import std.stdio;
 import std.format;
+import std.typecons: scoped;
 
-enum NUMBER = 11;
+// public alias  MyStackClass = scoped!impl_MyBaseClass;
+// private class impl_MyBaseClass {
+//     int beans = 0;
+    
+//     int addBeans(int val = 11) {
+//         return beans += val;
+//     }
+// }
 
-enum TOKEN_STRING = q{
-    int giveMe%1$s() {
-        return %1$s;
-    }
-};
+
+// class MyChildClass : MyHeapClass {
+//     override int addBeans(int val = 7) {
+//         return beans += val;
+//     }
+// }
 
 
-mixin(TOKEN_STRING.format(NUMBER));
 
-void main() {
-    writefln("the value is %s.", giveMe11);
+int main() {
+    return 0;
 }
