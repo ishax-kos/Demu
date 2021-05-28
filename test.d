@@ -1,25 +1,13 @@
 import std.stdio;
 import std.format;
-import std.typecons: scoped;
 
-// public alias  MyStackClass = scoped!impl_MyBaseClass;
-// private class impl_MyBaseClass {
-//     int beans = 0;
-    
-//     int addBeans(int val = 11) {
-//         return beans += val;
-//     }
-// }
+enum A = "enum B = \"mixin (C);\";";
 
+enum C = "int val = 5;";
 
-// class MyChildClass : MyHeapClass {
-//     override int addBeans(int val = 7) {
-//         return beans += val;
-//     }
-// }
+mixin (A);
 
-
-
-int main() {
-    return 0;
+void main() {
+    mixin (B);
+    writeln(val);
 }
