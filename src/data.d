@@ -1,5 +1,6 @@
 module data;
 import std.traits;
+public import std.typecons: scoped;
 
 private enum arithmeticOps = ["+","-","/","*","%","&","|^","==",">","<","<=",">=",">>","<<"];
 
@@ -45,25 +46,22 @@ union Data2 {
 }
 
 
-// union Data1 {
-//     ubyte u8;
-//     byte s8;
-// }
+// public alias BankSet(T) = scoped!(_BankSet!(T));
 
-// template 
-// {
-class BankSet(int S) {
-    ubyte[S][] bank;
+struct BankSet(T) {
+
+    static assert ( isStaticArray!T );
+    T[] bank;
     int bankIndex = 0;
 
-    ref ubyte[S] currentBank() {
-        return bank[bankIndex];
-    }
+    // import std.meta: Alias;
+    // alias currentBank = Alias!(bank[bankIndex]);
 
-    this(int banks = 1, int index = 0) {
-        bank.length = banks;
-        bankIndex = index;
-    } 
+
+    this(int banks, int current) {
+        this.bank.length = banks;
+        this.bankIndex = current;
+    }
 }
 
 
@@ -87,6 +85,7 @@ struct Flag8 {
         data &= cast(ubyte) (~(0b1<<(index%8)));
     }
 }
+
 
 
 immutable ubyte[256] opcodeLen = [
