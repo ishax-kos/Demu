@@ -83,11 +83,11 @@ struct GameBoyCPUState {
 align(1)
 struct GameBoyMemoryState {
     Cart cart;
-    auto vram  = new BankSet!0x4000(1);
-    auto wram  = new BankSet!0x1000(2, 1);
-    auto oam   = new BankSet!0xA0();
-    auto ioReg = new BankSet!0x80();
-    auto hram  = new BankSet!0x7F();
+    auto vram  = new BankSet!(ubyte[0x4000])();
+    auto oam   = new BankSet!(ubyte[0xA0])();
+    auto wram  = new BankSet!(ubyte[0x1000])(2, 1);
+    auto ioReg = new BankSet!(ubyte[0x80])();
+    auto hram  = new BankSet!(ubyte[0x7F])();
 
     /// special memory registers
     ubyte ieReg;
@@ -122,10 +122,10 @@ struct GameBoyMemoryState {
         mixin(format!READ_WRITE(
             q{return cart.read(address.u16);}, /// bank slot 1
             q{return cart.read(address.u16);}, /// bank slot 2
-            q{return vram.currentBank[address.u16-0x8000];}, /// Video RAM
+            q{return vram.bank[vram.bankIndex][address.u16-0x8000];}, /// Video RAM
             q{return cart.read(address.u16);}, /// RAM bank slot
             q{return wram.bank[0][address.u16-0xC000];}, /// Work RAM 1
-            q{return wram.currentBank[address.u16-0xD000];}, /// Work RAM 2 / WRAM Bank slot
+            q{return wram.bank[wram.bankIndex][address.u16-0xD000];}, /// Work RAM 2 / WRAM Bank slot
             q{assert(0);}, /// Mirror of WRAM
             q{return oam.bank[0][address.u16-0xFE00];}, /// OAM (Sprite attributes)
             q{assert(0);}, /// Invalid
@@ -143,13 +143,13 @@ struct GameBoyMemoryState {
             /* bank slot 2 */
             q{cart.write(address.u16, val);}, /// 
             /* Video RAM */
-            q{vram.currentBank[address.u16-0x8000] = val;}, /// 
+            q{vram.bank[vram.bankIndex][address.u16-0x8000] = val;}, /// 
             /* RAM bank slot */
             q{cart.write(address.u16, val);}, /// 
             /* Work RAM 1 */
             q{wram.bank[0][address.u16-0xC000] = val;}, /// 
             /* Work RAM 2 / WRAM Bank slot */
-            q{wram.currentBank[address.u16-0xD000] = val;}, /// 
+            q{wram.bank[wram.bankIndex][address.u16-0xD000] = val;}, /// 
             /* Mirror of WRAM */
             q{assert(0);}, /// 
             /* OAM (Sprite attributes) */
