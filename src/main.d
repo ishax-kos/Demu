@@ -1,11 +1,12 @@
 module main;
 import std.stdio;
-
-import gbdisplay;
-import engine.processor;
-import engine.ppu;
 import core.time;
 
+import display;
+import debugger;
+
+import engine.processor;
+import engine.ppu;
 
 
 
@@ -25,14 +26,14 @@ int main(string[] args) {
     }
 
     auto system = new CPU(romFileString);
-    auto display = new GBMainFrame("", SCREEN_WIDTH, SCREEN_HEIGHT, true);
-    display.addSubframe(new GBDebugger("Debug", SCREEN_WIDTH/2, SCREEN_HEIGHT, false), false);
+    auto display = new MainForm("", SCREEN_WIDTH, SCREEN_HEIGHT, true);
+    display.addSubForm(new GBDebugger("Debug", SCREEN_WIDTH/2, SCREEN_HEIGHT, false), false);
     auto ppu = new PPU(system.ram, display);
 
     ulong delay = MonoTime.currTime.ticks;
     immutable ulong TPS = MonoTime.ticksPerSecond();
 
-    display.drawGBRegion();
+    // display.drawGBRegion();
     while (display.noShutdown) {
         auto deltaAccum = MonoTime.currTime.ticks - delay;
         if (deltaAccum > TPS/10) {
