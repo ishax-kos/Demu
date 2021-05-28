@@ -3,27 +3,35 @@ module engine.ppu;
 import data;
 import display;
 import engine.memory;
+import bindbc.sdl: SDL_Rect, SDL_PIXELFORMAT_RGBA5551;
+
+
+enum PIXEL_MODE = SDL_PIXELFORMAT_RGBA5551;
+
 
 class PPU {
-    Frame display;
-    BankSet!0x4000 vram;
-    BankSet!0xA0   oam;
+    Form display;
+    auto vram = new BankSet!(ubyte[0x4000])();
+    auto oam = new BankSet!(SpriteEntry[40])();
 
     Flag8 lcdControl;
+    ubyte objSize() {return 8+8*lcdControl[2];}
     ubyte[2] backgroundPos;
     ubyte[2] windowPos;
-    ubyte    currentScanline;
-    ubyte    currentScanlineCompare;
+    uint    currentScanline;
+    uint    currentScanlineCompare;
 
     /// Palettes
-    ubyte greyPalletBG;
-    ubyte greyPalletOBJ1;
-    ubyte greyPalletOBJ2;
+    ubyte greyPaletteBG;
+    ubyte greyPaletteOBJ1;
+    ubyte greyPaletteOBJ2;
 
-    ubyte colorPalletBG_ptr;
-    ubyte colorPalletOBJ_ptr;
-    ubyte colorPalletOBJ_Data;
+    ushort[4][8] colorPaletteBG;
+    ushort[4][8] colorPaletteOBJ;
 
+    ubyte colorPaletteBG_ptr;
+    ubyte colorPaletteOBJ_ptr;
+    ubyte colorPaletteOBJ_Data;
 
     this(ref GameBoyMemoryState ram, Frame display) {
         this.vram = ram.vram;
