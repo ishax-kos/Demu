@@ -4,6 +4,7 @@ import bindbc.sdl;
 import process;
 import engine.memory;
 import std.format;
+import display_impl;
 
 
 // enum PIXEL_MODE_SWITCH = "index8";
@@ -16,11 +17,10 @@ import std.format;
 
 
 
-
-class MainFrame : Frame {
+class MainForm : Form {
     bool noShutdown = true;
-    Frame[uint] frames;
-    Frame[] subFrames;
+    Form[uint] Forms;
+    Form[] subForms;
     this(string name, uint width, uint height, bool resize) {
         
         version(Windows) {
@@ -28,16 +28,16 @@ class MainFrame : Frame {
             assert(ret == sdlSupport, format!"could not load lib: %s\n"(SDL_GetError()));
         }
         super(name, width, height, resize);
-        frames[SDL_GetWindowID(this.window)] = this;
+        Forms[SDL_GetWindowID(this.window)] = this;
     }
     
 
-    SubFrame newSubframe(string name, uint width, uint height, bool resize, bool _open = false) {
-        return addSubframe(new SubFrame(name, width, height, resize), _open);
+    SubForm newSubForm(string name, uint width, uint height, bool resize, bool _open = false) {
+        return addSubForm(new SubForm(name, width, height, resize), _open);
     }
-    SubFrame addSubframe(SubFrame child, bool _open = false) {
-        frames[SDL_GetWindowID(child.window)] = child;
-        subFrames ~= child;
+    SubForm addSubForm(SubForm child, bool _open = false) {
+        Forms[SDL_GetWindowID(child.window)] = child;
+        subForms ~= child;
         if (!_open) child.close;
         return child;
     }
@@ -45,7 +45,7 @@ class MainFrame : Frame {
 
     override void update(ulong delta) {
         super.update(delta);
-        foreach (ref fr; subFrames) if (fr.isOpen) {
+        foreach (ref fr; subForms) if (fr.isOpen) {
             fr.update(delta);
         }
         handleEvents();
@@ -54,7 +54,7 @@ class MainFrame : Frame {
 
 
     override void close() {
-        foreach (key, ref fr; frames) {
+        foreach (key, ref fr; Forms) {
             destroy(fr);
         }
         noShutdown = false;
@@ -69,7 +69,7 @@ class MainFrame : Frame {
             case SDL_WINDOWEVENT: 
                 switch (event.window.event) {
                 case SDL_WINDOWEVENT_CLOSE:
-                    this.frames[event.window.windowID].close;
+                    this.Forms[event.window.windowID].close;
                     break;
 
                 default: 
@@ -89,14 +89,14 @@ class MainFrame : Frame {
 }
 
 
-class SubFrame : Frame {
+class SubForm : Form {
     this(string name, uint width, uint height, bool resize) {
         super(name, width, height, resize);
     }
 }
 
 
-class Frame : Update {
+class Form : Update {
     SDL_Window* window = null;
     SDL_Renderer* renderer = null;
     SDL_Texture* texture = null;
@@ -139,8 +139,26 @@ class Frame : Update {
     override void update(ulong delta) { 
         SDL_RenderPresent(renderer);
     }
+
+
+    mixin GBDisplay_impl;
 }
 
+// expandColor(pixels[0..blockSize*2], []);
 
 
+// void drawGBRegion() {
+//     SDL_Rect area = SDL_Rect(0,0,256,256);
+//     SDL_Rect areaScreen = SDL_Rect(8,8,256*3,256*3);
+//     SDL_SetWindowSize(window, areaScreen.w+areaScreen.x*2, areaScreen.h+areaScreen.y*2);
+//     uint tileArea = 0;
+//     enum uint blockSize = 1024 * 64; /// Tiles * pixels per tile
+//     void* pixels;
+//     int pitch; /// unused
+//     SDL_LockTexture(texture, &area, &pixels, &pitch);
+//     expandColor(pixels[0..blockSize*2], []); /// blockSize*2 because there are 2 bytes in a ushort
+//     // SDL_UpdateTexture( texture, &area, data, 64 );
 
+//     SDL_UnlockTexture(texture);
+//     SDL_RenderCopy(renderer, texture, &area, &areaScreen);
+// }
